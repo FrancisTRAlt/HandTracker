@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ml5.js neuralNetwork Training and Saving</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.min.js"></script>
+    <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: white;
+        }
+
+        aside {
+            overflow-y: auto;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        aside::-webkit-scrollbar {
+            display: none;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto !important;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+        }
+
+        .recording-dot {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .class-finished {
+            background-color: #10b981 !important;
+            border-color: #059669 !important;
+        }
+
+        .modal-active {
+            display: flex !important;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+
+<body class="font-sans">
+    <div id="custom-modal"
+        class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+            <h3 id="modal-title" class="text-lg font-bold text-white mb-2">Alert</h3>
+            <p id="modal-body" class="text-slate-400 text-sm mb-6"></p>
+            <div id="modal-actions" class="flex gap-3 justify-end">
+                <button id="modal-cancel"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
+                <button id="modal-confirm"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row h-full w-full">
+        <aside
+            class="w-full lg:w-80 bg-slate-900 p-6 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col gap-4 shrink-0">
+            <div>
+                <h1 class="text-xl lg:text-2xl font-bold text-indigo-400">HandPose AI</h1>
+                <p class="text-slate-400 text-xs lg:text-sm">Train custom hand gestures</p>
+            </div>
+            <hr class="border-slate-800">
+            <div id="setup-section">
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">1. Define
+                    Classes</label>
+                <div class="flex gap-2">
+                    <input type="text" id="class-input" placeholder="Max 10 chars"
+                        class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm w-full focus:outline-none focus:border-indigo-500 text-white">
+                    <button id="add-class-btn"
+                        class="bg-indigo-600 hover:bg-indigo-500 px-3 py-2 rounded text-sm font-bold transition">Add</button>
+                </div>
+                <div id="class-list" class="mt-2 flex flex-wrap gap-2"></div>
+            </div>
+            <div id="collect-section">
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">2. Data
+                    Collection</label>
+                <div id="status-display"
+                    class="bg-slate-800 p-3 rounded mb-2 text-xs lg:text-sm border border-slate-700 text-slate-300">
+                    Waiting for classes...
+                </div>
+                <button id="collect-btn"
+                    class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-3 rounded font-bold transition text-sm"
+                    disabled>
+                    Start Capturing
+                </button>
+            </div>
+            <div id="train-section">
+                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">3.
+                    Training</label>
+                <button id="train-btn"
+                    class="w-full border border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-30 py-3 rounded font-bold transition text-sm"
+                    disabled>
+                    Train Model
+                </button>
+                <div id="train-progress" class="hidden mt-2 text-center text-xs text-indigo-300 italic">Processing...
+                </div>
+            </div>
+            <div id="export-section" class="hidden pt-2">
+                <button id="save-btn"
+                    class="w-full bg-white text-black hover:bg-slate-200 py-3 rounded font-bold transition text-sm">
+                    Download ZIP 📦
+                </button>
+            </div>
+            <div class="mt-auto pt-6">
+                <button id="reset-btn"
+                    class="w-full text-slate-500 hover:text-red-400 text-xs font-semibold py-2 border border-slate-800 rounded hover:border-red-900 transition flex items-center justify-center gap-2">
+                    <span>Reset Everything</span>
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex items-center justify-center p-4 bg-slate-950 relative overflow-hidden">
+            <div id="canvas-container" class="relative w-full max-w-[640px] aspect-[4/3]">
+                <div id="result-overlay" class="absolute top-2 left-2 z-10 hidden">
+                    <div
+                        class="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 flex items-baseline">
+                        <span id="res-label"
+                            class="font-bold text-sm lg:text-xl text-emerald-400 uppercase">Result</span>
+                        <span id="res-conf" class="ml-2 text-slate-300 text-[10px] lg:text-sm">0%</span>
+                    </div>
+                </div>
+                <div id="recording-overlay"
+                    class="absolute top-2 right-2 z-10 hidden flex items-center gap-2 bg-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+                    <div class="w-2 h-2 bg-white rounded-full recording-dot"></div>
+                    <span id="target-label">...</span>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="sketch.js"></script>
+</body>
+
+</html>
