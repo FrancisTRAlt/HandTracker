@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ml5.js neuralNetwork Training and Saving</title>
+    <title>HandTracker</title>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.min.js"></script>
     <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
 
@@ -13,32 +13,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            width: 100vw;
-            overflow: hidden;
+        body, html {
+            margin: 0; padding: 0;
+            height: 100%; width: 100%;
             background-color: #0f172a;
             color: white;
+            overflow-x: hidden;
         }
 
         aside {
-            overflow-y: auto;
-            -ms-overflow-style: none;
-            scrollbar-width: none;
+            scrollbar-width: thin;
+            scrollbar-color: #334155 #0f172a;
         }
-
         aside::-webkit-scrollbar {
-            display: none;
+            width: 6px;
+        }
+        aside::-webkit-scrollbar-thumb {
+            background-color: #334155;
+            border-radius: 10px;
         }
 
         canvas {
-            max-width: 100%;
+            max-width: 100% !important;
             height: auto !important;
             border-radius: 12px;
-            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+            object-fit: contain;
         }
 
         .recording-dot {
@@ -46,17 +45,9 @@
         }
 
         @keyframes pulse {
-            0% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.3;
-            }
-
-            100% {
-                opacity: 1;
-            }
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
         }
 
         .class-finished {
@@ -70,110 +61,114 @@
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: scale(0.95);
-            }
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
 
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
+        @media (max-width: 1024px) {
+            aside { height: 50vh; overflow-y: auto; }
+            main { height: 50vh; }
         }
     </style>
 </head>
 
-<body class="font-sans">
-    <div id="custom-modal"
-        class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+<body class="font-sans flex flex-col lg:flex-row h-screen w-full">
+    <div id="custom-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
         <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
             <h3 id="modal-title" class="text-lg font-bold text-white mb-2">Alert</h3>
             <p id="modal-body" class="text-slate-400 text-sm mb-6"></p>
             <div id="modal-actions" class="flex gap-3 justify-end">
-                <button id="modal-cancel"
-                    class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
-                <button id="modal-confirm"
-                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition">Confirm</button>
+                <button id="modal-cancel" class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
+                <button id="modal-confirm" class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition">Confirm</button>
             </div>
         </div>
     </div>
 
-    <div class="flex flex-col lg:flex-row h-full w-full">
-        <aside
-            class="w-full lg:w-80 bg-slate-900 p-6 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col gap-4 shrink-0">
+    <aside class="w-full lg:w-80 bg-slate-900 p-5 lg:p-6 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col gap-6 shrink-0 order-2 lg:order-1">
+        <div>
+            <h1 class="text-xl font-bold text-indigo-400">HandTracker</h1>
+            <p class="text-slate-400 text-xs">Custom Gesture Trainer</p>
+        </div>
+
+        <section class="flex flex-col gap-4">
             <div>
-                <h1 class="text-xl lg:text-2xl font-bold text-indigo-400">HandPose AI</h1>
-                <p class="text-slate-400 text-xs lg:text-sm">Train custom hand gestures</p>
-            </div>
-            <hr class="border-slate-800">
-            <div id="setup-section">
-                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">1. Define
-                    Classes</label>
+                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">1. Define Classes</label>
                 <div class="flex gap-2">
-                    <input type="text" id="class-input" placeholder="Max 10 chars"
-                        class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm w-full focus:outline-none focus:border-indigo-500 text-white">
-                    <button id="add-class-btn"
-                        class="bg-indigo-600 hover:bg-indigo-500 px-3 py-2 rounded text-sm font-bold transition">Add</button>
+                    <input type="text" id="class-input" placeholder="Name" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm w-full focus:ring-2 focus:ring-indigo-500 outline-none text-white">
+                    <button id="add-class-btn" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-bold transition">Add</button>
                 </div>
-                <div id="class-list" class="mt-2 flex flex-wrap gap-2"></div>
+                <div id="class-list" class="mt-3 flex flex-wrap gap-2"></div>
             </div>
-            <div id="collect-section">
-                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">2. Data
-                    Collection</label>
-                <div id="status-display"
-                    class="bg-slate-800 p-3 rounded mb-2 text-xs lg:text-sm border border-slate-700 text-slate-300">
+
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">2. Data Collection</label>
+                <div class="mb-3">
+                    <label class="text-[10px] text-slate-400 block mb-1">Samples per class</label>
+                    <input type="number" id="max-data-input" value="80" min="1" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs focus:border-emerald-500 outline-none text-white">
+                </div>
+                <div id="status-display" class="text-xs bg-slate-950/50 p-2 rounded border border-slate-800 text-slate-300 mb-3 leading-relaxed">
                     Waiting for classes...
                 </div>
-                <button id="collect-btn"
-                    class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-3 rounded font-bold transition text-sm"
-                    disabled>
+                <button id="collect-btn" class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:hover:bg-emerald-600 py-3 rounded-lg font-bold transition text-sm shadow-lg shadow-emerald-900/20" disabled>
                     Start Capturing
                 </button>
             </div>
-            <div id="train-section">
-                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">3.
-                    Training</label>
-                <button id="train-btn"
-                    class="w-full border border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-30 py-3 rounded font-bold transition text-sm"
-                    disabled>
+
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">3. Training</label>
+                <button id="train-btn" class="w-full border-2 border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-30 py-3 rounded-lg font-bold transition text-sm mb-3" disabled>
                     Train Model
                 </button>
-                <div id="train-progress" class="hidden mt-2 text-center text-xs text-indigo-300 italic">Processing...
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Epochs</label>
+                        <input type="number" id="epochs-input" value="50" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Batch</label>
+                        <input type="number" id="batch-input" value="32" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Rate</label>
+                        <input type="number" id="lr-input" value="0.01" step="0.001" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
+                    </div>
                 </div>
+                <div id="train-progress" class="hidden mt-3 text-center text-xs text-indigo-400 font-medium italic">Processing...</div>
             </div>
-            <div id="export-section" class="hidden pt-2">
-                <button id="save-btn"
-                    class="w-full bg-white text-black hover:bg-slate-200 py-3 rounded font-bold transition text-sm">
+
+            <div id="export-section" class="hidden">
+                <button id="save-btn" class="w-full bg-white text-black hover:bg-slate-200 py-3 rounded-lg font-bold transition text-sm shadow-xl">
                     Download ZIP 📦
                 </button>
             </div>
-            <div class="mt-auto pt-6">
-                <button id="reset-btn"
-                    class="w-full text-slate-500 hover:text-red-400 text-xs font-semibold py-2 border border-slate-800 rounded hover:border-red-900 transition flex items-center justify-center gap-2">
-                    <span>Reset Everything</span>
-                </button>
-            </div>
-        </aside>
+        </section>
 
-        <main class="flex-1 flex items-center justify-center p-4 bg-slate-950 relative overflow-hidden">
-            <div id="canvas-container" class="relative w-full max-w-[640px] aspect-[4/3]">
-                <div id="result-overlay" class="absolute top-2 left-2 z-10 hidden">
-                    <div
-                        class="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 flex items-baseline">
-                        <span id="res-label"
-                            class="font-bold text-sm lg:text-xl text-emerald-400 uppercase">Result</span>
-                        <span id="res-conf" class="ml-2 text-slate-300 text-[10px] lg:text-sm">0%</span>
+        <div class="mt-auto pt-4">
+            <button id="reset-btn" class="w-full text-slate-500 hover:text-red-400 text-[10px] font-bold py-2 border border-slate-800 rounded-lg hover:border-red-900/50 transition">
+                RESET SYSTEM
+            </button>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex items-center justify-center p-4 bg-slate-950 relative order-1 lg:order-2 overflow-hidden">
+        <div id="canvas-container" class="relative w-full max-w-[640px] flex items-center justify-center">
+            <div id="result-overlay" class="absolute top-4 left-4 z-20 hidden">
+                <div class="bg-indigo-600/90 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-2xl flex flex-col">
+                    <span class="text-[8px] uppercase tracking-widest text-indigo-200 font-bold">Prediction</span>
+                    <div class="flex items-baseline gap-2">
+                        <span id="res-label" class="font-black text-lg lg:text-2xl text-white uppercase leading-none">Result</span>
+                        <span id="res-conf" class="text-indigo-200 text-xs font-bold">0%</span>
                     </div>
                 </div>
-                <div id="recording-overlay"
-                    class="absolute top-2 right-2 z-10 hidden flex items-center gap-2 bg-red-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase">
-                    <div class="w-2 h-2 bg-white rounded-full recording-dot"></div>
-                    <span id="target-label">...</span>
-                </div>
             </div>
-        </main>
-    </div>
+            
+            <div id="recording-overlay" class="absolute top-4 right-4 z-20 hidden items-center gap-2 bg-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase shadow-lg animate-pulse">
+                <div class="w-2 h-2 bg-white rounded-full"></div>
+                <span id="target-label">...</span>
+            </div>
+        </div>
+    </main>
+
     <script src="sketch.js"></script>
 </body>
-
 </html>

@@ -9,8 +9,6 @@ let classes = [];
 let classIdx = 0;
 let isCollecting = false;
 
-const ML_CONFIG = { epochs: 50, dataCollectMax: 80 };
-
 function showPopup(title, body, showCancel = true) {
   return new Promise((resolve) => {
     select('#modal-title').html(title);
@@ -30,17 +28,23 @@ function showPopup(title, body, showCancel = true) {
 }
 
 function preload() {
+  // Model loading is handled by ml5 silently
   handPose = ml5.handPose({ flipped: true, maxHands: 2 });
 }
 
 function setup() {
+  const container = select('#canvas-container');
   const canvas = createCanvas(640, 480);
-  canvas.parent("canvas-container");
+  canvas.parent(container);
+  
   video = createCapture(VIDEO, { flipped: true });
   video.size(640, 480);
   video.hide();
+  
   initUI();
   initClassifier();
+  
+  // Suppress "Loading..." text by drawing video immediately in draw()
   handPose.detectStart(video, (results) => { hands = results; });
   connections = handPose.getConnections();
 }
@@ -59,7 +63,7 @@ function initUI() {
 }
 
 async function resetApp() {
-  const confirmed = await showPopup("Reset Everything?", "Are you sure? Your trained data and classes will be permanently lost.");
+  const confirmed = await showPopup("Reset System?", "Warning: All collected data and trained models will be erased.", true);
   if (confirmed) {
     classes = []; classIdx = 0; dataCount = 0;
     isTrained = false; isCollecting = false;
@@ -91,7 +95,7 @@ async function addNewClass() {
   }
   classes.push(val);
   let chip = createSpan(val)
-    .class("bg-slate-700 text-[10px] px-2 py-1 rounded border border-slate-600 transition-colors")
+    .class("bg-indigo-900/40 text-indigo-200 text-[10px] font-bold px-3 py-1.5 rounded-full border border-indigo-500/30 transition-all")
     .id(`class-chip-${classes.length - 1}`);
   chip.parent('#class-list');
   input.value('');
@@ -100,8 +104,9 @@ async function addNewClass() {
 }
 
 function draw() {
-  background(15);
+  background(10);
   image(video, 0, 0, width, height);
+  
   if (hands.length > 0) {
     for (let hand of hands) drawHandSkeleton(hand);
     const inputData = flattenHandData(hands);
@@ -113,12 +118,12 @@ function draw() {
 }
 
 function drawHandSkeleton(hand) {
-  stroke(99, 102, 241); strokeWeight(3);
+  stroke(129, 140, 248); strokeWeight(2.5);
   for (let conn of connections) {
     line(hand.keypoints[conn[0]].x, hand.keypoints[conn[0]].y, hand.keypoints[conn[1]].x, hand.keypoints[conn[1]].y);
   }
   fill(255); noStroke();
-  for (let kp of hand.keypoints) circle(kp.x, kp.y, 6);
+  for (let kp of hand.keypoints) circle(kp.x, kp.y, 5);
 }
 
 function gotClassification(results) {
@@ -132,7 +137,15 @@ function gotClassification(results) {
 }
 
 function handleDataCollection(inputData) {
-  if (dataCount < ML_CONFIG.dataCollectMax) {
+  const maxData = int(select('#max-data-input').value());
+  
+  if (maxData <= 0) {
+    isCollecting = false;
+    select('#recording-overlay').hide();
+    return;
+  }
+
+  if (dataCount < maxData) {
     classifier.addData(inputData, { label: classes[classIdx] });
     dataCount++;
   } else {
@@ -143,29 +156,42 @@ function handleDataCollection(inputData) {
     dataCount = 0;
     select('#recording-overlay').hide();
     
-    // FEATURE UPDATED: Only enable training button when all classes are finished
     if (classIdx >= classes.length) {
-      select('#status-display').html("✅ Collection Complete");
+      select('#status-display').html("✅ Data Collection Complete");
       select('#train-btn').removeAttribute('disabled');
-      showPopup("Ready to Train", "All classes have been captured. Click 'Train Model' to begin.", false);
     }
   }
   updateDataCountUI();
 }
 
 function train() {
+  const epochs = int(select('#epochs-input').value()) || 50;
+  const batchSize = int(select('#batch-input').value()) || 32;
+  const learningRate = float(select('#lr-input').value()) || 0.01;
+
   select('#train-progress').show();
   select('#train-btn').attribute('disabled', '');
+  
   classifier.normalizeData();
-  classifier.train({ epochs: ML_CONFIG.epochs }, () => {
+  
+  const options = { epochs, batchSize, learningRate };
+
+  classifier.train(options, (epoch, loss) => {
+    select('#train-progress').html(`Training: ${epoch + 1}/${epochs}`);
+  }, () => {
     isTrained = true;
-    select('#train-progress').html("✨ Model Ready!");
+    select('#train-progress').html("✨ Training Success!");
     select('#export-section').removeClass('hidden');
-    showPopup("Training Done", "The model is now predicting based on your gestures.", false);
   });
 }
 
 function startCollection() {
+  const maxData = int(select('#max-data-input').value());
+  if (maxData <= 0) {
+    showPopup("Invalid Input", "Max Samples per class must be at least 1.", false);
+    return;
+  }
+
   if (classIdx < classes.length) {
     isCollecting = true;
     select('#recording-overlay').style('display', 'flex');
@@ -174,8 +200,9 @@ function startCollection() {
 }
 
 function updateDataCountUI() {
-  let c = classes[classIdx] || "Finished";
-  select('#status-display').html(`Target: <b class="text-indigo-400">${c}</b><br>Captured: ${dataCount}/${ML_CONFIG.dataCollectMax}`);
+  const maxData = select('#max-data-input').value();
+  let c = classes[classIdx] || "All Done";
+  select('#status-display').html(`Current Class: <b class="text-indigo-400">${c}</b><br>Samples: ${dataCount} / ${maxData}`);
 }
 
 function flattenHandData(allHands) {
@@ -218,6 +245,5 @@ async function downloadZip() {
   });
   zip.generateAsync({ type: "blob" }).then(content => {
     saveAs(content, "hand_pose_model.zip");
-    showPopup("Success", "Model ZIP downloaded.", false);
   });
 }
