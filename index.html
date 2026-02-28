@@ -12,47 +12,93 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+
     <style>
-        body, html {
-            margin: 0; padding: 0;
-            height: 100%; width: 100%;
-            background-color: #0f172a;
-            color: white;
-            overflow-x: hidden;
+        /* Hide scrollbars but allow functional scrolling where needed */
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
 
-        aside {
-            scrollbar-width: thin;
-            scrollbar-color: #334155 #0f172a;
+        *::-webkit-scrollbar {
+            display: none;
         }
-        aside::-webkit-scrollbar {
-            width: 6px;
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: white;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            position: fixed;
         }
-        aside::-webkit-scrollbar-thumb {
-            background-color: #334155;
-            border-radius: 10px;
+
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: #0f172a;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid #1e293b;
+            border-bottom-color: #6366f1;
+            border-radius: 50%;
+            display: inline-block;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         canvas {
             max-width: 100% !important;
-            height: auto !important;
-            border-radius: 12px;
+            max-height: 100% !important;
             object-fit: contain;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
         }
 
-        .recording-dot {
-            animation: pulse 1.5s infinite;
+        /* Responsive Layout Container */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
         }
 
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.3; }
-            100% { opacity: 1; }
-        }
+        @media (max-width: 1023px) {
+            .app-container {
+                flex-direction: column-reverse;
+            }
 
-        .class-finished {
-            background-color: #10b981 !important;
-            border-color: #059669 !important;
+            /* Controls at bottom for mobile reach */
+            aside {
+                height: 50%;
+                border-right: none !important;
+                border-top: 1px solid #1e293b;
+                overflow-y: auto;
+            }
+
+            main {
+                height: 50%;
+            }
         }
 
         .modal-active {
@@ -61,114 +107,150 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
 
-        @media (max-width: 1024px) {
-            aside { height: 50vh; overflow-y: auto; }
-            main { height: 50vh; }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
     </style>
 </head>
 
-<body class="font-sans flex flex-col lg:flex-row h-screen w-full">
-    <div id="custom-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+<body class="font-sans">
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <p class="mt-4 text-indigo-400 font-bold uppercase tracking-widest text-sm">Initializing Neural Engine</p>
+    </div>
+
+    <div id="custom-modal"
+        class="fixed inset-0 z-[110] hidden items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
         <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-            <h3 id="modal-title" class="text-lg font-bold text-white mb-2">Alert</h3>
-            <p id="modal-body" class="text-slate-400 text-sm mb-6"></p>
+            <h3 id="modal-title" class="text-xl font-bold text-white mb-2">Alert</h3>
+            <p id="modal-body" class="text-slate-400 text-md mb-6"></p>
             <div id="modal-actions" class="flex gap-3 justify-end">
-                <button id="modal-cancel" class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
-                <button id="modal-confirm" class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition">Confirm</button>
+                <button id="modal-cancel"
+                    class="px-6 py-2 rounded-lg text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
+                <button id="modal-confirm"
+                    class="px-6 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition">Confirm</button>
             </div>
         </div>
     </div>
 
-    <aside class="w-full lg:w-80 bg-slate-900 p-5 lg:p-6 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col gap-6 shrink-0 order-2 lg:order-1">
-        <div>
-            <h1 class="text-xl font-bold text-indigo-400">HandTracker</h1>
-            <p class="text-slate-400 text-xs">Custom Gesture Trainer</p>
-        </div>
-
-        <section class="flex flex-col gap-4">
-            <div>
-                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">1. Define Classes</label>
-                <div class="flex gap-2">
-                    <input type="text" id="class-input" placeholder="Name" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm w-full focus:ring-2 focus:ring-indigo-500 outline-none text-white">
-                    <button id="add-class-btn" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-bold transition">Add</button>
+    <div class="app-container">
+        <aside
+            class="w-full lg:w-96 bg-slate-900/80 p-6 lg:p-8 border-r border-slate-800 flex flex-col justify-between shrink-0">
+            <div class="space-y-6">
+                <div>
+                    <h1 class="text-2xl font-black text-indigo-400 tracking-tighter">HandTracker</h1>
+                    <p class="text-slate-500 text-xs uppercase font-bold tracking-widest">Mobile & Web Training</p>
                 </div>
-                <div id="class-list" class="mt-3 flex flex-wrap gap-2"></div>
+
+                <div class="space-y-5">
+                    <section>
+                        <label class="text-xs font-bold uppercase text-slate-500 block mb-2">1. Define Classes</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="class-input" placeholder="e.g. Wave"
+                                class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-lg w-full outline-none focus:ring-2 focus:ring-indigo-500 text-white transition">
+                            <button id="add-class-btn"
+                                class="bg-indigo-600 hover:bg-indigo-500 px-5 py-2.5 rounded-xl font-bold text-lg">Add</button>
+                        </div>
+                        <div id="class-list" class="mt-3 flex flex-wrap gap-2"></div>
+                    </section>
+
+                    <section class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center mb-3">
+                            <label class="text-xs font-bold uppercase text-slate-500">2. Collection</label>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-slate-400">Samples:</span>
+                                <input type="number" id="max-data-input" value="80"
+                                    class="w-16 bg-slate-900 border border-slate-700 rounded-lg py-1 text-center text-sm font-bold text-indigo-400">
+                            </div>
+                        </div>
+                        <div id="status-display"
+                            class="text-sm text-slate-300 mb-4 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50 italic">
+                            Ready to collect...</div>
+                        <button id="collect-btn"
+                            class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-20 py-3.5 rounded-xl font-bold text-lg transition shadow-lg shadow-emerald-900/20"
+                            disabled>Start Capture</button>
+                    </section>
+
+                    <section class="bg-slate-800/40 p-4 rounded-2xl border border-slate-700/50">
+                        <label class="text-xs font-bold uppercase text-slate-500 block mb-3">3. Training
+                            Parameters</label>
+                        <div class="grid grid-cols-3 gap-3 mb-4">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[10px] text-slate-500 font-bold text-center">Epochs</span>
+                                <input type="number" id="epochs-input" value="50"
+                                    class="bg-slate-900 border border-slate-700 rounded-xl p-2 text-center text-md font-bold text-white">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[10px] text-slate-500 font-bold text-center">Batch</span>
+                                <input type="number" id="batch-input" value="32"
+                                    class="bg-slate-900 border border-slate-700 rounded-xl p-2 text-center text-md font-bold text-white">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[10px] text-slate-500 font-bold text-center">Rate</span>
+                                <input type="number" id="lr-input" value="0.01" step="0.001"
+                                    class="bg-slate-900 border border-slate-700 rounded-xl p-2 text-center text-md font-bold text-white">
+                            </div>
+                        </div>
+                        <button id="train-btn"
+                            class="w-full border-2 border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-20 py-3 rounded-xl font-bold text-lg transition"
+                            disabled>Begin Training</button>
+                    </section>
+                </div>
             </div>
 
-            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">2. Data Collection</label>
-                <div class="mb-3">
-                    <label class="text-[10px] text-slate-400 block mb-1">Samples per class</label>
-                    <input type="number" id="max-data-input" value="80" min="1" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs focus:border-emerald-500 outline-none text-white">
+            <div class="space-y-3 mt-6">
+                <div id="export-section" class="hidden">
+                    <button id="save-btn"
+                        class="w-full bg-white text-slate-900 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition hover:bg-indigo-50">Download
+                        Weights (.ZIP)</button>
                 </div>
-                <div id="status-display" class="text-xs bg-slate-950/50 p-2 rounded border border-slate-800 text-slate-300 mb-3 leading-relaxed">
-                    Waiting for classes...
-                </div>
-                <button id="collect-btn" class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:hover:bg-emerald-600 py-3 rounded-lg font-bold transition text-sm shadow-lg shadow-emerald-900/20" disabled>
-                    Start Capturing
-                </button>
+                <button id="reset-btn"
+                    class="w-full text-slate-600 hover:text-red-400 text-xs font-bold transition uppercase tracking-widest">System
+                    Reset</button>
             </div>
+        </aside>
 
-            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">3. Training</label>
-                <button id="train-btn" class="w-full border-2 border-indigo-500 text-indigo-400 hover:bg-indigo-500 hover:text-white disabled:opacity-30 py-3 rounded-lg font-bold transition text-sm mb-3" disabled>
-                    Train Model
-                </button>
-                <div class="grid grid-cols-3 gap-2">
-                    <div>
-                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Epochs</label>
-                        <input type="number" id="epochs-input" value="50" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
+        <main class="flex-1 flex items-center justify-center p-4 bg-slate-950 relative">
+            <div id="canvas-container" class="relative w-full h-full flex items-center justify-center">
+
+                <div id="result-overlay" class="absolute top-4 left-4 z-20 hidden">
+                    <div
+                        class="bg-indigo-600/20 backdrop-blur-xl px-5 py-3 rounded-2xl border border-white/10 shadow-2xl ring-1 ring-white/20">
+                        <div class="flex items-center gap-2 mb-1">
+                            <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                            <span
+                                class="text-[10px] uppercase font-black tracking-widest text-indigo-200">Prediction</span>
+                        </div>
+                        <span id="res-label"
+                            class="font-black text-2xl lg:text-3xl text-white uppercase leading-tight block">---</span>
+                        <div class="flex items-center gap-2 mt-1">
+                            <div class="flex-1 w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div id="conf-bar" class="h-full bg-indigo-400 transition-all duration-300"
+                                    style="width: 0%"></div>
+                            </div>
+                            <span id="res-conf" class="text-indigo-300 text-xs font-bold">0%</span>
+                        </div>
                     </div>
-                    <div>
-                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Batch</label>
-                        <input type="number" id="batch-input" value="32" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
-                    </div>
-                    <div>
-                        <label class="text-[8px] text-slate-500 font-bold uppercase block mb-1">Rate</label>
-                        <input type="number" id="lr-input" value="0.01" step="0.001" class="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-white outline-none focus:border-indigo-500">
-                    </div>
                 </div>
-                <div id="train-progress" class="hidden mt-3 text-center text-xs text-indigo-400 font-medium italic">Processing...</div>
-            </div>
 
-            <div id="export-section" class="hidden">
-                <button id="save-btn" class="w-full bg-white text-black hover:bg-slate-200 py-3 rounded-lg font-bold transition text-sm shadow-xl">
-                    Download ZIP 📦
-                </button>
-            </div>
-        </section>
-
-        <div class="mt-auto pt-4">
-            <button id="reset-btn" class="w-full text-slate-500 hover:text-red-400 text-[10px] font-bold py-2 border border-slate-800 rounded-lg hover:border-red-900/50 transition">
-                RESET SYSTEM
-            </button>
-        </div>
-    </aside>
-
-    <main class="flex-1 flex items-center justify-center p-4 bg-slate-950 relative order-1 lg:order-2 overflow-hidden">
-        <div id="canvas-container" class="relative w-full max-w-[640px] flex items-center justify-center">
-            <div id="result-overlay" class="absolute top-4 left-4 z-20 hidden">
-                <div class="bg-indigo-600/90 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-2xl flex flex-col">
-                    <span class="text-[8px] uppercase tracking-widest text-indigo-200 font-bold">Prediction</span>
-                    <div class="flex items-baseline gap-2">
-                        <span id="res-label" class="font-black text-lg lg:text-2xl text-white uppercase leading-none">Result</span>
-                        <span id="res-conf" class="text-indigo-200 text-xs font-bold">0%</span>
-                    </div>
+                <div id="recording-overlay"
+                    class="absolute top-4 right-4 z-20 hidden items-center gap-3 bg-red-600 px-4 py-2 rounded-2xl text-xs font-black uppercase shadow-2xl animate-pulse">
+                    <div class="w-2 h-2 bg-white rounded-full"></div>
+                    <span id="target-label" class="tracking-widest">Capturing</span>
                 </div>
             </div>
-            
-            <div id="recording-overlay" class="absolute top-4 right-4 z-20 hidden items-center gap-2 bg-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase shadow-lg animate-pulse">
-                <div class="w-2 h-2 bg-white rounded-full"></div>
-                <span id="target-label">...</span>
-            </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <script src="sketch.js"></script>
 </body>
+
 </html>
